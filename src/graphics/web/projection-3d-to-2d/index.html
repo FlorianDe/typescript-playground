@@ -18,6 +18,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            flex-direction: column;
         }
 
         #canvas {
@@ -25,13 +26,43 @@
             border: 2px solid gray;
             background-color: white;
         }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            color: white;
+        }
+
+        .controls label {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input[type=number] {
+            width: 60px;
+        }
     </style>
 </head>
 
 <body>
     <div class="centerContent">
         <canvas id="canvas"></canvas>
-    </div>
+        <div class="controls">
+            <label>Offset Z: <input type="range" id="offsetZ" min="0" max="10" step="0.01" value="2"></label>
+            <label><input type="checkbox" id="autoOffset"> Animate Z Offset</label>
+            <label>Rotation Axis v1:
+                X <input type="number" id="v1x" value="0" step="0.1">
+                Y <input type="number" id="v1y" value="0" step="0.1">
+                Z <input type="number" id="v1z" value="0" step="0.1">
+            </label>
+            <label>Rotation Axis v2:
+                X <input type="number" id="v2x" value="1" step="0.1">
+                Y <input type="number" id="v2y" value="1" step="0.1">
+                Z <input type="number" id="v2z" value="0.5" step="0.1">
+            </label>
+            <input type="file" id="objLoader" accept=".obj">
+        </div>
 </body>
 <script>
     const canvas = document.getElementById("canvas");
@@ -39,7 +70,8 @@
     const ASPECT_RATIO_WIDTH_TO_HEIGHT = 1;
 
     const resizeCanvas = () => {
-        const scale = Math.min(window.innerWidth * 0.95 / ASPECT_RATIO_WIDTH_TO_HEIGHT, window.innerHeight * 0.95);
+        const MAX_PERCENTAGE = 0.8;
+        const scale = Math.min(window.innerWidth * MAX_PERCENTAGE / ASPECT_RATIO_WIDTH_TO_HEIGHT, window.innerHeight * MAX_PERCENTAGE);
         canvas.width = scale * ASPECT_RATIO_WIDTH_TO_HEIGHT;
         canvas.height = scale;
     };
@@ -47,28 +79,44 @@
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
+    const parseOBJ = (text) => {
+        return text.split('\n').reduce((acc, line) => {
+            const l = line.trim();
+            if (l.startsWith('v ')) {
+                const [, x, y, z] = l.split(/\s+/).map(Number);
+                acc.vertices.push({ x, y, z });
+            } else if (l.startsWith('f ')) {
+                const idxs = l.split(/\s+/).slice(1).map(v => parseInt(v) - 1);
+                acc.faces.push(idxs);
+            }
+            return acc;
+        }, { vertices: [], faces: [] });
+    };
+
+    document.getElementById('objLoader').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const text = await file.text();
+            const objModel = parseOBJ(text);
+            if (objModel.vertices.length > 0 && objModel.faces.length > 0) { model = objModel; }
+        }
+    });
+
     const POINT_SIZE = 20;
     const STROKE_WIDTH = 6;
-    const points = [
-        { x: -0.5, y: -0.5, z: 0.5 },
-        { x: -0.5, y: 0.5, z: 0.5 },
-        { x: 0.5, y: 0.5, z: 0.5 },
-        { x: 0.5, y: -0.5, z: 0.5 },
-
-        { x: -0.5, y: -0.5, z: -0.5 },
-        { x: -0.5, y: 0.5, z: -0.5 },
-        { x: 0.5, y: 0.5, z: -0.5 },
-        { x: 0.5, y: -0.5, z: -0.5 },
-    ]
-
-    const pathsIdx = [
-        [0, 1, 2, 3, 0],
-        [4, 5, 6, 7, 4],
-        [0, 4],
-        [1, 5],
-        [2, 6],
-        [3, 7],
-    ]
+    let model = {
+        vertices: [
+            { x: -0.5, y: -0.5, z: 0.5 }, { x: -0.5, y: 0.5, z: 0.5 },
+            { x: 0.5, y: 0.5, z: 0.5 }, { x: 0.5, y: -0.5, z: 0.5 },
+            { x: -0.5, y: -0.5, z: -0.5 }, { x: -0.5, y: 0.5, z: -0.5 },
+            { x: 0.5, y: 0.5, z: -0.5 }, { x: 0.5, y: -0.5, z: -0.5 }
+        ],
+        faces: [
+            [0, 1, 2, 3], [4, 5, 6, 7],
+            [0, 1, 5, 4], [1, 2, 6, 5],
+            [2, 3, 7, 6], [3, 0, 4, 7]
+        ]
+    };
 
     const clearCanvas = (canvas) => ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -165,23 +213,39 @@
      */
     const translatePoint = (p, v) => ({ x: p.x + v.x, y: p.y + v.y, z: p.z + v.z });
 
-    const drawCube = (() => {
+    const drawModel = (() => {
         const OFFSET_SPEED = 1;
-        const ROTATION_SPEED = Math.PI;
+        const ROTATION_SPEED = 1 / 2 * Math.PI;
 
-        let offset = { x: 0, y: 0, z: 1 };
+        let offset = { x: 0, y: 0, z: 10 };
         let angle = 0;
-        const v1 = { x: 0, y: 0, z: 0 }, v2 = { x: 1, y: 1, z: 0.5 };
+
+        const v1Inputs = ['v1x', 'v1y', 'v1z']
+        const v2Inputs = ['v2x', 'v2y', 'v2z'];
+        const getV = (inputs) => ({ x: +document.getElementById(inputs[0]).value, y: +document.getElementById(inputs[1]).value, z: +document.getElementById(inputs[2]).value });
+        const offsetSlider = document.getElementById('offsetZ')
+        const autoOffsetCheckbox = document.getElementById('autoOffset');
 
         return (dt) => {
-            offset = translatePoint(offset, { x: 0, y: 0, z: OFFSET_SPEED * dt });
+            if (autoOffsetCheckbox.checked) offset.z += 1 * dt;
+            else offset.z = parseFloat(offsetSlider.value);
+
+            const v1 = getV(v1Inputs);
+            const v2 = getV(v2Inputs);
             angle += ROTATION_SPEED * dt;
 
-            const transformedPoints = points.map(p => viewport(perspectiveProject(translatePoint(rotate(p, v1, v2, angle), offset)), canvas));
-            for (const tp of transformedPoints) drawPoint(tp);
-            for (const idxMap of pathsIdx)
-                for (let i = 0; i < idxMap.length - 1; i++)
-                    drawLine(transformedPoints[idxMap[i]], transformedPoints[idxMap[i + 1]]);
+            const transformed = model.vertices.map(p =>
+                viewport(perspectiveProject(translatePoint(rotate(p, v1, v2, angle), offset)), canvas)
+            );
+
+            for (const p of transformed) drawPoint(p);
+            for (const f of model.faces) {
+                for (let i = 0; i < f.length; i++) {
+                    const p1 = transformed[f[i]];
+                    const p2 = transformed[f[(i + 1) % f.length]];
+                    drawLine(p1, p2);
+                }
+            }
         }
     })()
 
@@ -193,7 +257,7 @@
 
         clearCanvas(canvas);
         drawFps(dt);
-        drawCube(dt);
+        drawModel(dt);
 
         requestAnimationFrame(render);
     };
