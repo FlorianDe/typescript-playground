@@ -33,8 +33,7 @@ const routes = {
 // Create router
 const router = createRouter({
   routes,
-  strategy: "browser",
-  basename: import.meta.env.BASE_URL,
+  strategy: "hash",
   onNavigate: (to, from) => {
     console.log("Navigating from", from.path, "to", to.path);
   },
