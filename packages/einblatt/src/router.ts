@@ -33,6 +33,7 @@ export interface RouterStrategy {
 export interface RouterConfig {
   routes: Record<string, Route>;
   strategy: "browser" | "hash" | "memory";
+  basename?: string;
   onNavigate?: (to: RouteMatch, from: RouteMatch) => void;
 }
 
@@ -80,12 +81,24 @@ export function route<Path extends string>(path: Path): Route<Path> {
  * Browser router strategy using History API
  */
 class BrowserRouterStrategy implements RouterStrategy {
+  private basename: string;
+
+  constructor(basename = "") {
+    this.basename = basename.replace(/\/$/, ""); // Remove trailing slash
+  }
+
   getCurrentPath(): string {
-    return window.location.pathname;
+    const pathname = window.location.pathname;
+    // Strip basename from pathname
+    if (this.basename && pathname.startsWith(this.basename)) {
+      return pathname.slice(this.basename.length) || "/";
+    }
+    return pathname;
   }
 
   navigate(path: string): void {
-    window.history.pushState({}, "", path);
+    const fullPath = this.basename + path;
+    window.history.pushState({}, "", fullPath);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
@@ -157,7 +170,7 @@ export class Router {
     this.routes = config.routes;
 
     // Create strategy
-    this.strategy = this.createStrategy(config.strategy);
+    this.strategy = this.createStrategy(config.strategy, config.basename);
 
     // Initialize current route
     const initialMatch = this.matchRoute(this.strategy.getCurrentPath());
@@ -177,10 +190,10 @@ export class Router {
     }
   }
 
-  private createStrategy(type: "browser" | "hash" | "memory"): RouterStrategy {
+  private createStrategy(type: "browser" | "hash" | "memory", basename?: string): RouterStrategy {
     switch (type) {
       case "browser":
-        return new BrowserRouterStrategy();
+        return new BrowserRouterStrategy(basename);
       case "hash":
         return new HashRouterStrategy();
       case "memory":
