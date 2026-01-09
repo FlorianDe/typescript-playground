@@ -431,6 +431,49 @@ export function isolatedHTML(
 }
 
 // ============================================================================
+// SECTION: Lifecycle Utilities
+// ============================================================================
+
+/**
+ * Schedules a callback to run after the current DOM element is mounted.
+ * Uses queueMicrotask for synchronous-like execution after the current task.
+ *
+ * @param callback - Function to call after mount
+ * @returns A cleanup function that can be called to cancel the scheduled callback
+ *
+ * @example
+ * ```tsx
+ * function MyComponent() {
+ *   const container = <div id="my-component">...</div>;
+ *
+ *   onMount(() => {
+ *     const element = container.querySelector('#canvas');
+ *     // Setup code here
+ *   });
+ *
+ *   return container;
+ * }
+ * ```
+ */
+export function onMount(callback: () => void | (() => void)): () => void {
+  let cleanup: (() => void) | void;
+  let cancelled = false;
+
+  queueMicrotask(() => {
+    if (!cancelled) {
+      cleanup = callback();
+    }
+  });
+
+  return () => {
+    cancelled = true;
+    if (cleanup) {
+      cleanup();
+    }
+  };
+}
+
+// ============================================================================
 // SECTION 6: Public API Exports
 // ============================================================================
 
