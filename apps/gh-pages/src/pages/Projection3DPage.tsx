@@ -6,8 +6,10 @@ export function Projection3DPage() {
       <h1 class="text-4xl font-bold mb-4">3D Projection Example</h1>
 
       <div class="space-y-4">
-        <div class="bg-gray-700 shadow-lg rounded-lg p-3 h-[600px]">
-          <Projection3DViewer />
+        <div class="bg-gray-700 shadow-lg rounded-lg p-3 flex flex-col">
+          <div class="aspect-square md:aspect-video w-full">
+            <Projection3DViewer />
+          </div>
         </div>
 
         <div class="bg-blue-50 border border-blue-200 rounded p-3">
